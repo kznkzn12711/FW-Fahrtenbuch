@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1b5e8a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>Fahrtenbuch</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>Fahrtenbuch</h1><span id="syncState"></span></header>
+
+<main>
+  <section id="tab-log" class="tab active">
+    <form id="form">
+      <label>Fahrzeug
+        <select id="vehicle" required></select>
+      </label>
+      <label>Datum
+        <input type="date" id="date" required>
+      </label>
+      <label>Kilometer
+        <input type="number" id="km" inputmode="decimal" min="0" step="0.1" required>
+      </label>
+      <label>Zweck der Fahrt
+        <select id="purpose" required></select>
+      </label>
+      <button type="submit" id="save">Speichern</button>
+      <button type="button" id="cancelEdit" hidden>Abbrechen</button>
+    </form>
+    <h2>Letzte Fahrten</h2>
+    <label class="inline">Filter
+      <select id="filterVehicle"></select>
+    </label>
+    <ul id="list"></ul>
+  </section>
+
+  <section id="tab-stats" class="tab">
+    <label class="inline">Fahrzeug
+      <select id="statVehicle"></select>
+    </label>
+    <label class="inline">Jahr
+      <select id="statYear"></select>
+    </label>
+    <div id="statTotal"></div>
+    <h2>Pro Monat</h2><div id="statMonth"></div>
+    <h2>Pro Zweck</h2><div id="statPurpose"></div>
+    <h2>Pro Fahrzeug</h2><div id="statVeh"></div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <h2>Fahrzeuge</h2>
+    <div id="vehicleNames"></div>
+
+    <h2>Zwecke der Fahrt</h2>
+    <div id="purposeNames"></div>
+    <form id="addPurposeForm">
+      <label>Neuer Zweck <input type="text" id="newPurpose" autocomplete="off"></label>
+      <button type="submit">Hinzufügen</button>
+    </form>
+
+    <h2>Nextcloud (WebDAV)</h2>
+    <p class="hint">Datei-URL z. B. <code>https://cloud.example.de/remote.php/dav/files/BENUTZER/Fahrtenbuch.json</code>. Als Passwort ein <b>App-Passwort</b> verwenden (Nextcloud → Einstellungen → Sicherheit). Es wird nur lokal auf diesem Gerät gespeichert.</p>
+    <label>URL <input type="url" id="ncUrl"></label>
+    <label>Benutzer <input type="text" id="ncUser" autocomplete="off"></label>
+    <label>App-Passwort <input type="password" id="ncPass" autocomplete="off"></label>
+    <button id="ncSave">Speichern</button>
+    <button id="ncSync">Jetzt synchronisieren</button>
+
+    <h2>Datei-Sicherung</h2>
+    <p class="hint">Über „Teilen“ lässt sich die Datei in Google Drive, Nextcloud o. Ä. ablegen.</p>
+    <button id="expJson">Export JSON</button>
+    <button id="expCsv">Export CSV</button>
+    <label class="filebtn">Import JSON<input type="file" id="impJson" accept=".json,application/json" hidden></label>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="tab-log" class="active">Erfassen</button>
+  <button data-tab="tab-stats">Statistik</button>
+  <button data-tab="tab-settings">Einstellungen</button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>
