@@ -59,7 +59,7 @@ function renderList() {
   const f = $('filterVehicle').value;
   const rows = live().filter(e => !f || e.vehicle === f).sort((a, b) => b.date.localeCompare(a.date) || b.updated - a.updated).slice(0, 100);
   $('list').innerHTML = rows.map(e => `<li>
-    <div class="main"><div>${esc(e.purpose)}</div><div class="sub">${fmtDate(e.date)} · ${esc(vName(e.vehicle))}</div></div>
+    <div class="main"><div>${esc(vName(e.vehicle))}</div><div class="sub">${fmtDate(e.date)} · ${esc(e.purpose)}</div></div>
     <div class="km">${fmtKm(e.km)} km</div>
     <button data-edit="${e.id}">✎</button><button class="del" data-del="${e.id}">✕</button></li>`).join('') || '<p class="hint">Noch keine Fahrten.</p>';
 }
