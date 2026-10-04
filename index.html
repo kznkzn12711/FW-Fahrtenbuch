@@ -49,8 +49,12 @@
     <label class="inline"><input type="checkbox" id="cmpToDate"> nur bis zum gleichen Datum (laufendes Jahr)</label>
     <div id="statCmp"></div>
     <h2>Pro Monat</h2><div id="statMonth"></div>
-    <h2>Pro Zweck</h2><div id="statPurpose"></div>
-    <h2>Pro Fahrzeug</h2><div id="statVeh"></div>
+    <h2>Pro Zweck</h2>
+    <div class="seg" data-for="statPurpose"><button data-mode="bars">Balken</button><button data-mode="pie">Kreis</button></div>
+    <div id="statPurpose"></div>
+    <h2>Pro Fahrzeug</h2>
+    <div class="seg" data-for="statVeh"><button data-mode="bars">Balken</button><button data-mode="pie">Kreis</button></div>
+    <div id="statVeh"></div>
   </section>
 
   <section id="tab-settings" class="tab">

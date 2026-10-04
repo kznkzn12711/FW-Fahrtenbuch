@@ -104,6 +104,34 @@ function bars(map, el, sortKeys) {
   const max = Math.max(1, ...map.values());
   el.innerHTML = keys.map(k => `<div class="bar"><span class="lbl">${esc(k)}</span><span class="fill" style="width:${map.get(k) / max * 55}%"></span><span class="val">${fmtKm(map.get(k))}</span></div>`).join('') || '<p class="hint">Keine Daten.</p>';
 }
+// Umschalter Balken/Kreis je Diagramm, die Wahl wird pro Gerät gemerkt
+const chartKey = id => 'fahrtenbuch.chart.' + id;
+const chartMode = id => { try { return localStorage.getItem(chartKey(id)) === 'pie' ? 'pie' : 'bars'; } catch (e) { return 'bars'; } };
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', ev => {
+  if (!ev.target.dataset.mode) return;
+  try { localStorage.setItem(chartKey(seg.dataset.for), ev.target.dataset.mode); } catch (e) {}
+  renderStats();
+}));
+function chart(map, el) {
+  document.querySelectorAll(`.seg[data-for="${el.id}"] button`).forEach(b => b.classList.toggle('active', b.dataset.mode === chartMode(el.id)));
+  if (chartMode(el.id) !== 'pie') return bars(map, el);
+  const keys = [...map.keys()].filter(k => map.get(k) > 0).sort((a, b) => map.get(b) - map.get(a));
+  const total = keys.reduce((s, k) => s + map.get(k), 0);
+  if (!total) { el.innerHTML = '<p class="hint">Keine Daten.</p>'; return; }
+  const color = i => `hsl(${Math.round(i * 137.5) % 360}, 55%, 50%)`;
+  const pt = a => [100 + 90 * Math.cos(a), 100 + 90 * Math.sin(a)];
+  let a0 = -Math.PI / 2, slices = '', legend = '';
+  keys.forEach((k, i) => {
+    const km = map.get(k), frac = km / total, a1 = a0 + frac * 2 * Math.PI;
+    const pct = (frac * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+    const tip = `<title>${esc(k)}: ${fmtKm(km)} km (${pct} %)</title>`;
+    if (frac > 0.9999) slices += `<circle cx="100" cy="100" r="90" fill="${color(i)}">${tip}</circle>`;
+    else { const [x0, y0] = pt(a0), [x1, y1] = pt(a1); slices += `<path d="M100 100 L${x0} ${y0} A90 90 0 ${frac > 0.5 ? 1 : 0} 1 ${x1} ${y1} Z" fill="${color(i)}" stroke="var(--bg)" stroke-width="1.5">${tip}</path>`; }
+    legend += `<div class="leg"><span class="sw" style="background:${color(i)}"></span><span class="lbl">${esc(k)}</span><span class="val">${fmtKm(km)} km · ${pct} %</span></div>`;
+    a0 = a1;
+  });
+  el.innerHTML = `<svg class="pie" viewBox="0 0 200 200" role="img" aria-label="Kreisdiagramm">${slices}</svg>${legend}`;
+}
 function renderStats() {
   const years = [...new Set(live().map(e => e.date.slice(0, 4)))].sort().reverse();
   const cur = $('statYear').value;
@@ -115,8 +143,8 @@ function renderStats() {
   const sum = (list, keyFn) => { const m = new Map(); list.forEach(e => m.set(keyFn(e), (m.get(keyFn(e)) || 0) + e.km)); return m; };
   $('statTotal').textContent = fmtKm(rows.reduce((s, e) => s + e.km, 0)) + ' km';
   bars(sum(rows, e => e.date.slice(0, 7)), $('statMonth'), true);
-  bars(sum(rows, e => e.purpose), $('statPurpose'));
-  bars(sum(inYear, e => vName(e.vehicle)), $('statVeh'));
+  chart(sum(rows, e => e.purpose), $('statPurpose'));
+  chart(sum(inYear, e => vName(e.vehicle)), $('statVeh'));
   renderCompare(y || years[0] || '');
 }
 $('statVehicle').onchange = $('statYear').onchange = $('cmpToDate').onchange = renderStats;
