@@ -61,7 +61,15 @@
       <button type="submit">Hinzufügen</button>
     </form>
 
-    <h2>Nextcloud (WebDAV)</h2>
+    <h2>Dropbox</h2>
+    <p class="hint">Einmalig in der <b>Dropbox App Console</b> (dropbox.com/developers/apps) eine App anlegen: Scoped access → <i>App folder</i>. Unter Permissions <code>files.content.write</code> und <code>files.content.read</code> aktivieren. Unter Settings als <b>Redirect URI</b> eintragen: <code id="dbxRedirect"></code>. Dann den <b>App key</b> hier einfügen.</p>
+    <label>App key <input type="text" id="dbxKey" autocomplete="off"></label>
+    <p id="dbxStatus"></p>
+    <button id="dbxConnect">Mit Dropbox verbinden</button>
+    <button id="dbxSync" hidden>Jetzt synchronisieren</button>
+    <button id="dbxDisconnect" hidden>Trennen</button>
+
+    <h2>Nextcloud (WebDAV, optional)</h2>
     <p class="hint">Datei-URL z. B. <code>https://cloud.example.de/remote.php/dav/files/BENUTZER/Fahrtenbuch.json</code>. Als Passwort ein <b>App-Passwort</b> verwenden (Nextcloud → Einstellungen → Sicherheit). Es wird nur lokal auf diesem Gerät gespeichert.</p>
     <label>URL <input type="url" id="ncUrl"></label>
     <label>Benutzer <input type="text" id="ncUser" autocomplete="off"></label>

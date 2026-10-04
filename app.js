@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const $ = id => document.getElementById(id);
 const KEY = 'fahrtenbuch.db', CFG = 'fahrtenbuch.nc';
 
@@ -143,29 +143,95 @@ $('addPurposeForm').addEventListener('submit', ev => {
   $('newPurpose').value = ''; save(); renderAll(); autoSync();
 });
 
-// ---- Nextcloud-Sync (WebDAV) ----
+// ---- Cloud-Sync (Dropbox, Nextcloud/WebDAV) ----
 const cfg = () => { try { return JSON.parse(localStorage.getItem(CFG)) || {}; } catch (e) { return {}; } };
 function loadCfg() { const c = cfg(); $('ncUrl').value = c.url || ''; $('ncUser').value = c.user || ''; $('ncPass').value = c.pass || ''; }
 $('ncSave').onclick = () => { localStorage.setItem(CFG, JSON.stringify({ url: $('ncUrl').value.trim(), user: $('ncUser').value.trim(), pass: $('ncPass').value })); setState('Gespeichert'); };
 $('ncSync').onclick = () => { $('ncSave').click(); sync(true); };
 const setState = t => { $('syncState').textContent = t; };
+
+const DBX = 'fahrtenbuch.dbx', DBX_FILE = '/Fahrtenbuch.json';
+const dbx = () => { try { return JSON.parse(localStorage.getItem(DBX)) || {}; } catch (e) { return {}; } };
+const dbxSet = o => localStorage.setItem(DBX, JSON.stringify({ ...dbx(), ...o }));
+const redirectUri = () => location.origin + location.pathname;
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function dbxToken(params) {
+  const r = await fetch('https://api.dropboxapi.com/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: dbx().key, ...params }) });
+  if (!r.ok) throw new Error('Dropbox-Anmeldung: HTTP ' + r.status);
+  return r.json();
+}
+async function dbxConnect() {
+  const key = $('dbxKey').value.trim(); if (!key) return alert('Bitte zuerst den Dropbox App-Key eintragen.');
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  dbxSet({ key, verifier });
+  location.href = 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({ client_id: key, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256', token_access_type: 'offline', redirect_uri: redirectUri() });
+}
+async function dbxFinishLogin() {
+  const code = new URLSearchParams(location.search).get('code'); if (!code || !dbx().verifier) return;
+  history.replaceState(null, '', redirectUri());
+  try {
+    const t = await dbxToken({ grant_type: 'authorization_code', code, code_verifier: dbx().verifier, redirect_uri: redirectUri() });
+    dbxSet({ refresh: t.refresh_token, access: t.access_token, expires: Date.now() + t.expires_in * 1000 - 60000, verifier: null });
+    renderDbx(); await sync(true);
+  } catch (e) { alert(e.message); }
+}
+async function dbxAccess() {
+  const d = dbx(); if (d.access && d.expires > Date.now()) return d.access;
+  const t = await dbxToken({ grant_type: 'refresh_token', refresh_token: d.refresh });
+  dbxSet({ access: t.access_token, expires: Date.now() + t.expires_in * 1000 - 60000 }); return t.access_token;
+}
+const dbxRemote = {
+  active: () => !!dbx().refresh,
+  async get() {
+    const r = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST', headers: { Authorization: 'Bearer ' + await dbxAccess(), 'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }) } });
+    if (r.status === 409) return null;
+    if (!r.ok) throw new Error('Dropbox: HTTP ' + r.status);
+    return r.json();
+  },
+  async put(text) {
+    const r = await fetch('https://content.dropboxapi.com/2/files/upload', { method: 'POST', headers: { Authorization: 'Bearer ' + await dbxAccess(), 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', mute: true }) }, body: text });
+    if (!r.ok) throw new Error('Dropbox: HTTP ' + r.status);
+  }
+};
+const ncRemote = {
+  active: () => !!cfg().url,
+  headers() { const c = cfg(); return { Authorization: 'Basic ' + btoa(unescape(encodeURIComponent(c.user + ':' + c.pass))) }; },
+  async get() {
+    const r = await fetch(cfg().url, { headers: this.headers(), cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('Nextcloud: HTTP ' + r.status);
+    return r.json();
+  },
+  async put(text) {
+    const r = await fetch(cfg().url, { method: 'PUT', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: text });
+    if (!r.ok) throw new Error('Nextcloud: HTTP ' + r.status);
+  }
+};
+function renderDbx() {
+  const d = dbx(); $('dbxKey').value = d.key || '';
+  $('dbxStatus').textContent = d.refresh ? 'Verbunden ✓' : 'Nicht verbunden';
+  $('dbxRedirect').textContent = redirectUri();
+  $('dbxConnect').hidden = !!d.refresh; $('dbxSync').hidden = $('dbxDisconnect').hidden = !d.refresh;
+}
+$('dbxConnect').onclick = dbxConnect;
+$('dbxSync').onclick = () => sync(true);
+$('dbxDisconnect').onclick = () => { if (confirm('Dropbox-Verbindung trennen? Lokale Daten bleiben erhalten.')) { localStorage.removeItem(DBX); renderDbx(); setState(''); } };
+
 let syncing = false;
 async function sync(manual) {
-  const c = cfg(); if (!c.url) { if (manual) alert('Bitte zuerst die Nextcloud-URL eintragen.'); return; }
+  const remotes = [dbxRemote, ncRemote].filter(r => r.active());
+  if (!remotes.length) { if (manual) alert('Bitte zuerst Dropbox verbinden.'); return; }
   if (syncing) return; syncing = true; setState('Sync …');
-  const headers = { Authorization: 'Basic ' + btoa(unescape(encodeURIComponent(c.user + ':' + c.pass))) };
   try {
-    const r = await fetch(c.url, { headers, cache: 'no-store' });
-    if (r.ok) merge(await r.json()); else if (r.status !== 404) throw new Error('HTTP ' + r.status);
-    const p = await fetch(c.url, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(db) });
-    if (!p.ok) throw new Error('HTTP ' + p.status);
+    for (const r of remotes) { const data = await r.get(); if (data) merge(data); await r.put(JSON.stringify(db)); }
     renderAll(); setState('Sync ✓ ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
   } catch (e) {
     setState('Sync fehlgeschlagen');
-    if (manual) alert('Sync fehlgeschlagen: ' + e.message + '\n\nBei „Failed to fetch“ blockiert meist CORS: die App muss von derselben Domain wie die Nextcloud ausgeliefert werden oder die Nextcloud-Domain muss die App-Herkunft per CORS erlauben.');
+    if (manual) alert('Sync fehlgeschlagen: ' + e.message);
   } finally { syncing = false; }
 }
-const autoSync = () => { if (cfg().url && navigator.onLine) sync(false); };
+const autoSync = () => { if (navigator.onLine && [dbxRemote, ncRemote].some(r => r.active())) sync(false); };
 
 // ---- Export / Import ----
 function download(name, text, type) {
@@ -191,7 +257,8 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   if (b.dataset.tab === 'tab-stats') renderStats();
 });
 function renderAll() { fillVehicleSelects(); fillPurposeSelect(editId ? $('purpose').value : ''); renderList(); renderStats(); renderVehicleNames(); renderPurposeNames(); }
-renderAll(); loadCfg(); resetForm(); autoSync();
+renderAll(); loadCfg(); renderDbx(); resetForm();
+dbxFinishLogin().then(autoSync);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
