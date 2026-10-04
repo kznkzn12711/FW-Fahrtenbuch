@@ -45,6 +45,9 @@
       <select id="statYear"></select>
     </label>
     <div id="statTotal"></div>
+    <h2>Vorjahresvergleich</h2>
+    <label class="inline"><input type="checkbox" id="cmpToDate"> nur bis zum gleichen Datum (laufendes Jahr)</label>
+    <div id="statCmp"></div>
     <h2>Pro Monat</h2><div id="statMonth"></div>
     <h2>Pro Zweck</h2><div id="statPurpose"></div>
     <h2>Pro Fahrzeug</h2><div id="statVeh"></div>
@@ -52,7 +55,14 @@
 
   <section id="tab-settings" class="tab">
     <h2>Fahrzeuge</h2>
+    <p class="hint">PKW = bis 3,5 t, LKW = über 3,5 t (nur LKW zählen in „Summe LKW“).</p>
     <div id="vehicleNames"></div>
+    <form id="addVehicleForm">
+      <label>Neues Fahrzeug
+        <span class="row"><input type="text" id="newVehicle" autocomplete="off"><select id="newVehicleType"><option value="lkw">LKW</option><option value="pkw">PKW</option></select></span>
+      </label>
+      <button type="submit">Hinzufügen</button>
+    </form>
 
     <h2>Zwecke der Fahrt</h2>
     <div id="purposeNames"></div>

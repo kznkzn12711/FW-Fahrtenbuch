@@ -18,6 +18,11 @@ let editId = null;
 const save = () => localStorage.setItem(KEY, JSON.stringify(db));
 const live = () => db.entries.filter(e => !e.deleted);
 const vName = id => (db.vehicles.find(v => v.id === id) || { name: '?' }).name;
+// Fahrzeugtyp: 'pkw' (<= 3,5 t) oder 'lkw' (> 3,5 t); ältere Daten ohne Typ: erstes Fahrzeug PKW, übrige LKW
+const vType = v => v.type || (v.id === 'v1' ? 'pkw' : 'lkw');
+const vById = id => db.vehicles.find(v => v.id === id) || {};
+const liveVehicles = () => db.vehicles.filter(v => !v.deleted);
+const byOrder = (a, b) => a.id.length - b.id.length || a.id.localeCompare(b.id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const fmtKm = n => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 const fmtDate = s => s.split('-').reverse().join('.');
@@ -29,21 +34,24 @@ function merge(remote) {
     for (const r of b || []) { const l = m.get(r.id); if (!l || (r.updated || 0) > (l.updated || 0)) m.set(r.id, r); }
     return [...m.values()];
   };
-  db.vehicles = mergeList(db.vehicles, remote.vehicles).sort((a, b) => a.id.localeCompare(b.id));
+  db.vehicles = mergeList(db.vehicles, remote.vehicles).sort(byOrder);
   db.purposes = mergeList(db.purposes, remote.purposes);
   db.entries = mergeList(db.entries, remote.entries);
   save();
 }
 
 // ---- UI: Erfassen ----
-function fillVehicleSelects() {
-  const opts = db.vehicles.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
+function fillVehicleSelects(extra) {
+  const opt = v => `<option value="${v.id}">${esc(v.name)}</option>`;
+  const used = new Set(live().map(e => e.vehicle));
+  const formOpts = db.vehicles.filter(v => !v.deleted || v.id === extra).map(opt).join('');
+  const allOpts = db.vehicles.filter(v => !v.deleted || used.has(v.id)).map(opt).join('');
   const keep = [$('vehicle').value, $('filterVehicle').value, $('statVehicle').value];
-  $('vehicle').innerHTML = opts;
-  $('filterVehicle').innerHTML = '<option value="">Alle</option>' + opts;
-  $('statVehicle').innerHTML = '<option value="">Alle</option>' + opts;
+  $('vehicle').innerHTML = formOpts;
+  $('filterVehicle').innerHTML = '<option value="">Alle</option>' + allOpts;
+  $('statVehicle').innerHTML = '<option value="">Alle</option>' + allOpts;
   [$('vehicle'), $('filterVehicle'), $('statVehicle')].forEach((s, i) => { if (keep[i]) s.value = keep[i]; });
-  if (!$('vehicle').value) $('vehicle').value = localStorage.getItem('fahrtenbuch.lastVehicle') || db.vehicles[0].id;
+  if (!$('vehicle').value) { const first = liveVehicles()[0]; $('vehicle').value = localStorage.getItem('fahrtenbuch.lastVehicle') || (first && first.id) || ''; }
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -81,7 +89,7 @@ $('list').addEventListener('click', ev => {
   const t = ev.target;
   if (t.dataset.edit) {
     const e = db.entries.find(x => x.id === t.dataset.edit);
-    editId = e.id; $('vehicle').value = e.vehicle; $('date').value = e.date; $('km').value = e.km; fillPurposeSelect(e.purpose);
+    editId = e.id; fillVehicleSelects(e.vehicle); $('vehicle').value = e.vehicle; $('date').value = e.date; $('km').value = e.km; fillPurposeSelect(e.purpose);
     $('save').textContent = 'Änderung speichern'; $('cancelEdit').hidden = false; scrollTo(0, 0);
   } else if (t.dataset.del && confirm('Fahrt löschen?')) {
     const e = db.entries.find(x => x.id === t.dataset.del);
@@ -109,16 +117,52 @@ function renderStats() {
   bars(sum(rows, e => e.date.slice(0, 7)), $('statMonth'), true);
   bars(sum(rows, e => e.purpose), $('statPurpose'));
   bars(sum(inYear, e => vName(e.vehicle)), $('statVeh'));
+  renderCompare(y || years[0] || '');
 }
-$('statVehicle').onchange = $('statYear').onchange = renderStats;
+$('statVehicle').onchange = $('statYear').onchange = $('cmpToDate').onchange = renderStats;
+
+// Vorjahresvergleich: unabhängig vom Fahrzeugfilter; optional nur bis zum gleichen Kalendertag
+function renderCompare(year) {
+  if (!year) { $('statCmp').innerHTML = '<p class="hint">Keine Daten.</p>'; return; }
+  const prev = String(+year - 1), now = today();
+  const cut = $('cmpToDate').checked && year === now.slice(0, 4) ? now.slice(5) : '99-99';
+  const sumFor = (yr, pred) => live().filter(e => e.date.startsWith(yr) && e.date.slice(5) <= cut && pred(e)).reduce((s, e) => s + e.km, 0);
+  const rows = [['Gesamt', () => true], ['Summe LKW', e => vType(vById(e.vehicle)) === 'lkw'], ['Summe PKW', e => vType(vById(e.vehicle)) === 'pkw']];
+  const used = new Set(live().filter(e => e.date.startsWith(year) || e.date.startsWith(prev)).map(e => e.vehicle));
+  db.vehicles.filter(v => !v.deleted || used.has(v.id)).forEach(v => rows.push([v.name, e => e.vehicle === v.id, true]));
+  const sign = n => (n > 0 ? '+' : n < 0 ? '−' : '') + fmtKm(Math.abs(n));
+  const body = rows.map(([label, pred, sub]) => {
+    const cur = sumFor(year, pred), old = sumFor(prev, pred), d = cur - old;
+    if (sub && !cur && !old) return '';
+    return `<tr class="${sub ? '' : 'sum'}"><td>${esc(label)}</td><td>${fmtKm(cur)}</td><td>${fmtKm(old)}</td><td>${sign(d)}</td><td>${old ? sign(Math.round(d / old * 1000) / 10) + ' %' : '–'}</td></tr>`;
+  }).join('');
+  $('statCmp').innerHTML = `<table class="cmp"><thead><tr><th></th><th>${year}</th><th>${prev}</th><th>Diff. km</th><th>Diff.</th></tr></thead><tbody>${body}</tbody></table>`
+    + (cut !== '99-99' ? `<p class="hint">Beide Jahre bis ${cut.split('-').reverse().join('.')}.</p>` : '');
+}
 
 // ---- Einstellungen ----
+const typeOpts = sel => ['pkw', 'lkw'].map(t => `<option value="${t}"${t === sel ? ' selected' : ''}>${t.toUpperCase()}</option>`).join('');
 function renderVehicleNames() {
-  $('vehicleNames').innerHTML = db.vehicles.map(v => `<label>${v.id.slice(1)}. Fahrzeug<input data-vid="${v.id}" value="${esc(v.name)}"></label>`).join('');
+  $('vehicleNames').innerHTML = liveVehicles().map(v => `<div class="row"><input data-vid="${v.id}" value="${esc(v.name)}"><select data-vtype="${v.id}">${typeOpts(vType(v))}</select><button class="del" data-vdel="${v.id}">✕</button></div>`).join('');
 }
 $('vehicleNames').addEventListener('change', ev => {
-  const v = db.vehicles.find(x => x.id === ev.target.dataset.vid);
-  v.name = ev.target.value.trim() || v.name; v.updated = Date.now(); save(); renderAll(); autoSync();
+  const t = ev.target, v = db.vehicles.find(x => x.id === (t.dataset.vid || t.dataset.vtype));
+  if (!v) return;
+  if (t.dataset.vid) v.name = t.value.trim() || v.name; else v.type = t.value;
+  v.updated = Date.now(); save(); renderAll(); autoSync();
+});
+$('vehicleNames').addEventListener('click', ev => {
+  const v = db.vehicles.find(x => x.id === ev.target.dataset.vdel);
+  if (!v) return;
+  if (liveVehicles().length < 2) return alert('Mindestens ein Fahrzeug muss bleiben.');
+  if (!confirm('„' + v.name + '“ entfernen? Bestehende Fahrten bleiben in der Statistik erhalten.')) return;
+  v.deleted = true; v.updated = Date.now(); save(); renderAll(); autoSync();
+});
+$('addVehicleForm').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const name = $('newVehicle').value.trim(); if (!name) return;
+  db.vehicles.push({ id: 'v' + uid(), name, type: $('newVehicleType').value, updated: Date.now() });
+  db.vehicles.sort(byOrder); $('newVehicle').value = ''; save(); renderAll(); autoSync();
 });
 
 function renderPurposeNames() {
@@ -218,18 +262,31 @@ $('dbxConnect').onclick = dbxConnect;
 $('dbxSync').onclick = () => sync(true);
 $('dbxDisconnect').onclick = () => { if (confirm('Dropbox-Verbindung trennen? Lokale Daten bleiben erhalten.')) { localStorage.removeItem(DBX); renderDbx(); setState(''); } };
 
-let syncing = false;
+// Reihenfolge-unabhängiger Schnappschuss: nur schreiben/neu zeichnen, wenn sich der Inhalt wirklich unterscheidet
+const idSort = l => [...(l || [])].sort((a, b) => (a.id < b.id ? -1 : 1));
+const canon = o => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
+const snap = d => canon({ v: idSort(d.vehicles), p: idSort(d.purposes), e: idSort(d.entries) });
+
+let syncing = false, again = false;
 async function sync(manual) {
   const remotes = [dbxRemote, ncRemote].filter(r => r.active());
   if (!remotes.length) { if (manual) alert('Bitte zuerst Dropbox verbinden.'); return; }
-  if (syncing) return; syncing = true; setState('Sync …');
+  if (syncing) { again = true; return; }
+  syncing = true; setState('Sync …');
   try {
-    for (const r of remotes) { const data = await r.get(); if (data) merge(data); await r.put(JSON.stringify(db)); }
-    renderAll(); setState('Sync ✓ ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+    let changed = false;
+    for (const r of remotes) {
+      const data = await r.get(), before = snap(db);
+      if (data) merge(data);
+      if (snap(db) !== before) changed = true;
+      if (!data || snap(db) !== snap(data)) await r.put(JSON.stringify(db));
+    }
+    if (changed) renderAll();
+    setState('Sync ✓ ' + new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
   } catch (e) {
     setState('Sync fehlgeschlagen');
     if (manual) alert('Sync fehlgeschlagen: ' + e.message);
-  } finally { syncing = false; }
+  } finally { syncing = false; if (again) { again = false; sync(false); } }
 }
 const autoSync = () => { if (navigator.onLine && [dbxRemote, ncRemote].some(r => r.active())) sync(false); };
 
@@ -256,11 +313,13 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   b.classList.add('active'); $(b.dataset.tab).classList.add('active');
   if (b.dataset.tab === 'tab-stats') renderStats();
 });
-function renderAll() { fillVehicleSelects(); fillPurposeSelect(editId ? $('purpose').value : ''); renderList(); renderStats(); renderVehicleNames(); renderPurposeNames(); }
+function renderAll() { fillVehicleSelects(editId ? $('vehicle').value : '');fillPurposeSelect(editId ? $('purpose').value : ''); renderList(); renderStats(); renderVehicleNames(); renderPurposeNames(); }
 renderAll(); loadCfg(); renderDbx(); resetForm();
 dbxFinishLogin().then(autoSync);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
+window.addEventListener('online', autoSync);
+setInterval(() => { if (!document.hidden) autoSync(); }, 60000);   // Änderungen anderer Geräte übernehmen, solange die App offen ist
 
 

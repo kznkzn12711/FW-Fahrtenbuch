@@ -23,6 +23,12 @@ li button{padding:6px 10px;margin:0;background:var(--line);color:var(--fg)}
 li button.del{color:var(--danger)}
 .row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
 .row input{margin:0}
+.row select{margin:0;width:auto}
+input[type=checkbox]{display:inline-block;width:auto;margin:0}
+table.cmp{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}
+table.cmp th,table.cmp td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line)}
+table.cmp th:first-child,table.cmp td:first-child{text-align:left}
+table.cmp tr.sum td{font-weight:600}
 .row button{margin:0;padding:12px;background:var(--line);color:var(--danger)}
 .hint{color:var(--muted);font-size:.8rem}
 code{word-break:break-all}
