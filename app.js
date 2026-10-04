@@ -157,7 +157,7 @@ const redirectUri = () => location.origin + location.pathname;
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 async function dbxToken(params) {
   const r = await fetch('https://api.dropboxapi.com/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: dbx().key, ...params }) });
-  if (!r.ok) throw new Error('Dropbox-Anmeldung: HTTP ' + r.status);
+  if (!r.ok) throw new Error('Dropbox-Anmeldung: HTTP ' + r.status + ' ' + (await r.text()).slice(0, 300));
   return r.json();
 }
 async function dbxConnect() {
@@ -185,13 +185,13 @@ const dbxRemote = {
   active: () => !!dbx().refresh,
   async get() {
     const r = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST', headers: { Authorization: 'Bearer ' + await dbxAccess(), 'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }) } });
-    if (r.status === 409) return null;
-    if (!r.ok) throw new Error('Dropbox: HTTP ' + r.status);
+    if (r.status === 409 && /not_found/.test(await r.clone().text())) return null;
+    if (!r.ok) throw new Error('Dropbox (Lesen): HTTP ' + r.status + ' ' + (await r.text()).slice(0, 300));
     return r.json();
   },
   async put(text) {
     const r = await fetch('https://content.dropboxapi.com/2/files/upload', { method: 'POST', headers: { Authorization: 'Bearer ' + await dbxAccess(), 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', mute: true }) }, body: text });
-    if (!r.ok) throw new Error('Dropbox: HTTP ' + r.status);
+    if (!r.ok) throw new Error('Dropbox (Schreiben): HTTP ' + r.status + ' ' + (await r.text()).slice(0, 300));
   }
 };
 const ncRemote = {
@@ -262,3 +262,4 @@ dbxFinishLogin().then(autoSync);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
+
