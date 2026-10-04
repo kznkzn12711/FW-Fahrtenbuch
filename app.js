@@ -153,7 +153,7 @@ const setState = t => { $('syncState').textContent = t; };
 const DBX = 'fahrtenbuch.dbx', DBX_FILE = '/Fahrtenbuch.json';
 const dbx = () => { try { return JSON.parse(localStorage.getItem(DBX)) || {}; } catch (e) { return {}; } };
 const dbxSet = o => localStorage.setItem(DBX, JSON.stringify({ ...dbx(), ...o }));
-const redirectUri = () => location.origin + location.pathname;
+const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/, '');
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 async function dbxToken(params) {
   const r = await fetch('https://api.dropboxapi.com/oauth2/token', { method: 'POST', body: new URLSearchParams({ client_id: dbx().key, ...params }) });
@@ -262,4 +262,5 @@ dbxFinishLogin().then(autoSync);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
+
 
